@@ -26,19 +26,15 @@ public class Predictor {
 	private static final String URL = "https://demo4729673.mockable.io/";
 	
 	/**
-	 * 
+	 * This is the main method and it is executed at the programme start up
 	 * @param args
 	 */
 	public static void main(String[] args) {
 		
 		Scanner sc = new Scanner(System.in);
-		
 		String investmentPlan = sc.next();
-		
 		String urlToCall = URL + investmentPlan;
-	
 		List<InvestmentHistoryPojo> investmentHist = getInvestmentHistory(urlToCall);
-		
 		if(investmentHist != null){
 			
 			
@@ -48,7 +44,6 @@ public class Predictor {
 	
 	
 	public static List<InvestmentHistoryPojo> getInvestmentHistory(String url){
-		
 		try{
 			URL obj = new URL(url);
 			HttpURLConnection con = (HttpURLConnection) obj.openConnection();
@@ -67,7 +62,6 @@ public class Predictor {
 				response.append(inputLine);
 			}
 			in.close();
-			
 			List<InvestmentHistoryPojo> investHist = gson.fromJson(response.toString(), new TypeToken<List<InvestmentHistoryPojo>>(){}.getType());
 			return investHist;
 			
@@ -96,6 +90,7 @@ class InvestmentHistoryPojo{
 	private Date returnDate;
 	//This represents the return amount
 	private String returnAmount;
+	
 	public String getInvestmentPlan() {
 		return investmentPlan;
 	}
@@ -123,4 +118,42 @@ class InvestmentHistoryPojo{
  */
 enum InvestmentPlans{
 	LOWCAP, MIDCAP, HIGHCAP, SHORTTERM, MIDTERM, LONGTERM;
+}
+
+
+interface IReturnGenrator{
+     public Date getNextReturnDate(Date d);
+}
+
+class BiMonthlyReturnGenerator implements IReturnGenrator{
+	
+	private List<String> supportedReturnTypes;
+	public Date getNextReturnDate(Date d){
+
+		// convert date to calendar
+		Calendar c = Calendar.getInstance();
+		c.setTime(d);
+		c.add(Calendar.DATE, 15); //same with c.add(Calendar.DAY_OF_MONTH, 1);
+		// convert calendar to date
+		Date nextDate = c.getTime();
+		return nextDate;
+	}
+	
+	
+}
+
+class TriMonthlyReturnGenerator implements IReturnGenrator{
+	
+	private List<String> supportedReturnTypes;
+	public Date getNextReturnDate(Date d){
+		// convert date to calendar
+		Calendar c = Calendar.getInstance();
+		c.setTime(d);
+		c.add(Calendar.DATE, 10); 
+		// convert calendar to date
+		Date nextDate = c.getTime();
+		return nextDate;
+	}
+	
+	
 }
