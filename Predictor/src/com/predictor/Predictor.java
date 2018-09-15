@@ -26,19 +26,24 @@ import com.google.gson.JsonSyntaxException;
 
 /**
  * This is the main class , Predictor
+ * 
  * @author Rajesh
  *
  */
 public class Predictor {
 
-	//This URL needs to be called with investment plan
+	// This URL needs to be called with investment plan
 	private static final String URL = "https://demo4729673.mockable.io/";
-	
-	//This represents the Investment type for which average needs to be calculated based on last two dates
-	private static final List<String> biMonthlyAverageCalculator = Arrays.asList("","","");
-	
-	//This represents the Investment type for which average needs to be calculated based on last two dates
-	private static final List<String> triMonthlyAverageCalculator = Arrays.asList("","","");
+
+	// This represents the Investment type for which average needs to be
+	// calculated based on last two dates
+	private static final List<String> biMonthlyAverageCalculator = Arrays
+			.asList("LOWCAP", "MIDCAP", "HIGHCAP");
+
+	// This represents the Investment type for which average needs to be
+	// calculated based on last two dates
+	private static final List<String> triMonthlyAverageCalculator = Arrays
+			.asList("SHORTTERM", "MIDTERM", "LONGTERM");
 
 	/**
 	 * 
@@ -46,9 +51,9 @@ public class Predictor {
 	 */
 	public static void main(String[] args) {
 		Scanner sc = new Scanner(System.in);
-		//Take the investment plan input from the user.
+		// Take the investment plan input from the user.
 		String investmentPlan = sc.next();
-		
+
 		String urlToCall = URL + investmentPlan;
 		try {
 			InvestMentResponse investmentHist = getInvestmentHistory(urlToCall);
@@ -56,13 +61,18 @@ public class Predictor {
 			SimpleAverageFactory factory = new SimpleAverageFactory();
 			factory.setBiMonthlyInvestmentReturns(biMonthlyAverageCalculator);
 			factory.setTriMonthlyInvestmentReturns(triMonthlyAverageCalculator);
-			SimpleAverageGenerator averageGenertor = factory.getSimpleAverageGenerator(investmentPlan);
-			if(averageGenertor != null){
-				
-				List<Date> transDates = returns.stream().map(r->r.getTranDate()).collect(Collectors.toList());
-				System.out.println("Next Date : " + averageGenertor.getNextDate(transDates));
+			SimpleAverageGenerator averageGenertor = factory
+					.getSimpleAverageGenerator(investmentPlan);
+			if (averageGenertor != null) {
+
+				List<Date> transDates = returns.stream()
+						.map(r -> r.getTranDate()).collect(Collectors.toList());
+				Date nextDate = averageGenertor.getNextDate(transDates);
+				SimpleDateFormat format = new SimpleDateFormat(
+						"dd-MM-yyyy HH:mm:ss");
+				System.out.println("Next Date : " + format.format(nextDate));
 			}
-			
+
 		} catch (InvestmentException e) {
 			System.out.println("Error occured with error code = "
 					+ e.getErrorCode() + " . Error Message = "
@@ -71,8 +81,11 @@ public class Predictor {
 	}
 
 	/**
-	 * This method returns the InvestmentResponse object after parsing the JSON which we get from the URL.
-	 * @param url - url which will return JSON response.
+	 * This method returns the InvestmentResponse object after parsing the JSON
+	 * which we get from the URL.
+	 * 
+	 * @param url
+	 *            - url which will return JSON response.
 	 * @return - InvestMentResponse object
 	 * @throws InvestmentException
 	 */
@@ -159,7 +172,8 @@ public class Predictor {
 }
 
 /**
- * This represents the error codes 
+ * This represents the error codes
+ * 
  * @author Rajesh
  */
 class InvestmentErrorCodes {
@@ -172,6 +186,7 @@ class InvestmentErrorCodes {
 
 /**
  * This represents the investment JSON response returned by the URL
+ * 
  * @author Rajesh
  */
 class InvestMentResponse {
@@ -217,6 +232,7 @@ class InvestMentResponse {
 
 /**
  * This class represents the investment returns.
+ * 
  * @author Rajesh
  *
  */
@@ -247,6 +263,7 @@ class InvestmentReturn {
 
 /**
  * These represents the different investment plans.
+ * 
  * @author Rajesh
  */
 enum InvestmentPlans {
@@ -255,11 +272,12 @@ enum InvestmentPlans {
 
 /**
  * This class represents the exception occured in the system
+ * 
  * @author Rajesh
  *
  */
 class InvestmentException extends Exception {
-	
+
 	private int errorCode;
 	private String errorMessage;
 
@@ -292,14 +310,15 @@ class InvestmentException extends Exception {
 }
 
 /**
- * This represents the various 
+ * This represents the various
+ * 
  * @author Rajesh
  *
  */
-interface SimpleAverageGenerator{
-	
+interface SimpleAverageGenerator {
+
 	public Date getNextDate(List<Date> tranDates);
-	
+
 }
 
 /**
@@ -307,56 +326,66 @@ interface SimpleAverageGenerator{
  * @author Rajesh
  *
  */
-class BiMonthlyAverageGenerator implements SimpleAverageGenerator{
-	
+class BiMonthlyAverageGenerator implements SimpleAverageGenerator {
+
 	@Override
 	public Date getNextDate(List<Date> tranDates) {
-		//Get last two dates.
-		if(tranDates.size() > 3){
-			tranDates = new ArrayList<Date>(tranDates.subList(0, 1));
+		// Get last two dates.
+		if (tranDates.size() > 2) {
+			tranDates = new ArrayList<Date>(tranDates.subList(
+					tranDates.size() - 2, tranDates.size()));
 		}
-		long time = tranDates.stream().mapToLong(d->d.getTime()).sum();
-		Date d = new Date(time);
+		long time = tranDates.stream().mapToLong(d -> d.getTime()).sum()
+				/ tranDates.size();
+		long toAdd = tranDates.get(tranDates.size() - 1).getTime() - time;
+		Date d = new Date(tranDates.get(tranDates.size() - 1).getTime() + toAdd);
 		return d;
 	}
-	
+
 }
-class TriMonthlyAverageGenerator implements SimpleAverageGenerator{
-	
+
+class TriMonthlyAverageGenerator implements SimpleAverageGenerator {
+
 	@Override
 	public Date getNextDate(List<Date> tranDates) {
-		//Get last two dates.
-		if(tranDates.size() > 3){
-			tranDates = new ArrayList<Date>(tranDates.subList(0, 2));
+		// Get last two dates.
+		if (tranDates.size() > 3) {
+			tranDates = new ArrayList<Date>(tranDates.subList(
+					tranDates.size() - 3, tranDates.size()));
 		}
-		long time = tranDates.stream().mapToLong(d->d.getTime()).sum();
-		Date d = new Date(time);
+		long time = tranDates.stream().mapToLong(d -> d.getTime()).sum()
+				/ tranDates.size();
+		long toAdd = tranDates.get(tranDates.size() - 1).getTime() - time;
+		Date d = new Date(tranDates.get(tranDates.size() - 1).getTime() + toAdd);
 		return d;
 	}
-	
+
 }
 
 /**
- * This is the SimpleAverageFactory and is used to get the specific Average calculator based on type of investment plan
+ * This is the SimpleAverageFactory and is used to get the specific Average
+ * calculator based on type of investment plan
+ * 
  * @author Rajesh
  */
-class SimpleAverageFactory{
-	
+class SimpleAverageFactory {
+
 	private List<String> biMonthlyInvestmentReturns;
-	
+
 	private List<String> triMonthlyInvestmentReturns;
-	
-	public SimpleAverageGenerator getSimpleAverageGenerator(String investmentType){
-		
+
+	public SimpleAverageGenerator getSimpleAverageGenerator(
+			String investmentType) {
+
 		SimpleAverageGenerator averageGenerator = null;
-		
-		if(biMonthlyInvestmentReturns.contains(investmentType)){
+
+		if (biMonthlyInvestmentReturns.contains(investmentType)) {
 			averageGenerator = new BiMonthlyAverageGenerator();
-		}else if(triMonthlyInvestmentReturns.contains(investmentType)){
+		} else if (triMonthlyInvestmentReturns.contains(investmentType)) {
 			averageGenerator = new TriMonthlyAverageGenerator();
 		}
 		return averageGenerator;
-		
+
 	}
 
 	public List<String> getBiMonthlyInvestmentReturns() {
@@ -376,6 +405,5 @@ class SimpleAverageFactory{
 			List<String> triMonthlyInvestmentReturns) {
 		this.triMonthlyInvestmentReturns = triMonthlyInvestmentReturns;
 	}
-	
-}
 
+}
