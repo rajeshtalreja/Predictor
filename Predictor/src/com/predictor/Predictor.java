@@ -7,7 +7,6 @@ import java.lang.reflect.Type;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,8 +24,10 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonSyntaxException;
 
 /**
- * This is the main class , Predictor
- * 
+ * This is the main class , Predictor.This just predicts the next date based on the average.
+ * Certain investment types are biMonthly or biaverage based and certain are tri average based.
+ * The logic is that we can create any type of Calculator into it and plug into it.
+ * There is a factory that gives the object of NextDateCalculator.
  * @author Rajesh
  *
  */
@@ -37,12 +38,12 @@ public class Predictor {
 
 	// This represents the Investment type for which average needs to be
 	// calculated based on last two dates
-	private static final List<String> biMonthlyAverageCalculator = Arrays
+	private static final List<String> investTypeApplicableForBiAverage = Arrays
 			.asList("LOWCAP", "MIDCAP", "HIGHCAP");
 
 	// This represents the Investment type for which average needs to be
 	// calculated based on last two dates
-	private static final List<String> triMonthlyAverageCalculator = Arrays
+	private static final List<String> investTypeApplicableForTriAverage = Arrays
 			.asList("SHORTTERM", "MIDTERM", "LONGTERM");
 
 	/**
@@ -53,21 +54,31 @@ public class Predictor {
 		Scanner sc = new Scanner(System.in);
 		// Take the investment plan input from the user.
 		String investmentPlan = sc.next();
-
+		//Create the URL
 		String urlToCall = URL + investmentPlan;
 		try {
+			//Get the Investment history
 			InvestMentResponse investmentHist = getInvestmentHistory(urlToCall);
+			//Get the return dates
 			List<InvestmentReturn> returns = investmentHist.getReturns();
+			
+			if(returns == null || returns.size() == 0){
+				throw new InvestmentException(InvestmentErrorCodes.NO_TRANSACTIONS_FOUND, "Transactions not found for this investment.");
+			}
+			
+			//This is the factory class to get the correct average calculator
 			SimpleAverageFactory factory = new SimpleAverageFactory();
-			factory.setBiMonthlyInvestmentReturns(biMonthlyAverageCalculator);
-			factory.setTriMonthlyInvestmentReturns(triMonthlyAverageCalculator);
-			SimpleAverageGenerator averageGenertor = factory
+			factory.setInvestTypeApplicableForBiAverage(investTypeApplicableForBiAverage);
+			factory.setInvestTypeApplicableForTriAverage(investTypeApplicableForTriAverage);
+			
+			SimpleAverageGenerator averageGenerator = factory
 					.getSimpleAverageGenerator(investmentPlan);
-			if (averageGenertor != null) {
-
+			
+			if (averageGenerator != null) {
+				
 				List<Date> transDates = returns.stream()
 						.map(r -> r.getTranDate()).collect(Collectors.toList());
-				Date nextDate = averageGenertor.getNextDate(transDates);
+				Date nextDate = averageGenerator.getNextDate(transDates);
 				SimpleDateFormat format = new SimpleDateFormat(
 						"dd-MM-yyyy HH:mm:ss");
 				System.out.println("Next Date : " + format.format(nextDate));
@@ -77,6 +88,10 @@ public class Predictor {
 			System.out.println("Error occured with error code = "
 					+ e.getErrorCode() + " . Error Message = "
 					+ e.getErrorMessage());
+		}catch(Exception e){
+			System.out.println("Error occured with error code = "
+					+ InvestmentErrorCodes.UNKNOWN_EXCEPTION + " . Error Message = "
+					+ e.getMessage());
 		}
 	}
 
@@ -84,8 +99,7 @@ public class Predictor {
 	 * This method returns the InvestmentResponse object after parsing the JSON
 	 * which we get from the URL.
 	 * 
-	 * @param url
-	 *            - url which will return JSON response.
+	 * @param url - url which will return JSON response.
 	 * @return - InvestMentResponse object
 	 * @throws InvestmentException
 	 */
@@ -172,8 +186,7 @@ public class Predictor {
 }
 
 /**
- * This represents the error codes
- * 
+ * This represents the error codes.
  * @author Rajesh
  */
 class InvestmentErrorCodes {
@@ -182,6 +195,7 @@ class InvestmentErrorCodes {
 	public static final Integer INVALID_JSON = 2;
 	public static final Integer STATUS_NOT_OK = 3;
 	public static final Integer UNKNOWN_EXCEPTION = 4;
+	public static final Integer NO_TRANSACTIONS_FOUND = 5;
 }
 
 /**
@@ -322,11 +336,11 @@ interface SimpleAverageGenerator {
 }
 
 /**
- * 
+ * This is bimonthly average generator. General logic is to add the last two dates and divide it by two.
  * @author Rajesh
  *
  */
-class BiMonthlyAverageGenerator implements SimpleAverageGenerator {
+class BiAverageNextDateGenerator implements SimpleAverageGenerator {
 
 	@Override
 	public Date getNextDate(List<Date> tranDates) {
@@ -343,8 +357,12 @@ class BiMonthlyAverageGenerator implements SimpleAverageGenerator {
 	}
 
 }
-
-class TriMonthlyAverageGenerator implements SimpleAverageGenerator {
+/**
+ * This is Trimonthly calculate the average of last three dates.
+ * @author Rajesh
+ *
+ */
+class TriAverageNextDateGenerator implements SimpleAverageGenerator {
 
 	@Override
 	public Date getNextDate(List<Date> tranDates) {
@@ -370,40 +388,40 @@ class TriMonthlyAverageGenerator implements SimpleAverageGenerator {
  */
 class SimpleAverageFactory {
 
-	private List<String> biMonthlyInvestmentReturns;
+	private List<String> investTypeApplicableForBiAverage;
 
-	private List<String> triMonthlyInvestmentReturns;
+	private List<String> investTypeApplicableForTriAverage;
 
 	public SimpleAverageGenerator getSimpleAverageGenerator(
 			String investmentType) {
 
 		SimpleAverageGenerator averageGenerator = null;
 
-		if (biMonthlyInvestmentReturns.contains(investmentType)) {
-			averageGenerator = new BiMonthlyAverageGenerator();
-		} else if (triMonthlyInvestmentReturns.contains(investmentType)) {
-			averageGenerator = new TriMonthlyAverageGenerator();
+		if (investTypeApplicableForBiAverage.contains(investmentType)) {
+			averageGenerator = new BiAverageNextDateGenerator();
+		} else if (investTypeApplicableForTriAverage.contains(investmentType)) {
+			averageGenerator = new TriAverageNextDateGenerator();
 		}
 		return averageGenerator;
 
 	}
 
-	public List<String> getBiMonthlyInvestmentReturns() {
-		return biMonthlyInvestmentReturns;
+	public List<String> getInvestTypeApplicableForBiAverage() {
+		return investTypeApplicableForBiAverage;
 	}
 
-	public void setBiMonthlyInvestmentReturns(
-			List<String> biMonthlyInvestmentReturns) {
-		this.biMonthlyInvestmentReturns = biMonthlyInvestmentReturns;
+	public void setInvestTypeApplicableForBiAverage(
+			List<String> investTypeApplicableForBiAverage) {
+		this.investTypeApplicableForBiAverage = investTypeApplicableForBiAverage;
 	}
 
-	public List<String> getTriMonthlyInvestmentReturns() {
-		return triMonthlyInvestmentReturns;
+	public List<String> getInvestTypeApplicableForTriAverage() {
+		return investTypeApplicableForTriAverage;
 	}
 
-	public void setTriMonthlyInvestmentReturns(
-			List<String> triMonthlyInvestmentReturns) {
-		this.triMonthlyInvestmentReturns = triMonthlyInvestmentReturns;
+	public void setInvestTypeApplicableForTriAverage(
+			List<String> investTypeApplicableForTriAverage) {
+		this.investTypeApplicableForTriAverage = investTypeApplicableForTriAverage;
 	}
 
 }
