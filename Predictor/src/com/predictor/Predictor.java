@@ -3,15 +3,26 @@ package com.predictor;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Type;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Scanner;
+import java.util.stream.Collectors;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonSyntaxException;
 
 /**
  * This is the main class , Predictor
@@ -20,38 +31,63 @@ import com.google.gson.reflect.TypeToken;
  */
 public class Predictor {
 
-	//This is used to get json and parse the json
-	private static Gson gson = new Gson();
-	
+	//This URL needs to be called with investment plan
 	private static final String URL = "https://demo4729673.mockable.io/";
 	
+	//This represents the Investment type for which average needs to be calculated based on last two dates
+	private static final List<String> biMonthlyAverageCalculator = Arrays.asList("","","");
+	
+	//This represents the Investment type for which average needs to be calculated based on last two dates
+	private static final List<String> triMonthlyAverageCalculator = Arrays.asList("","","");
+
 	/**
-	 * This is the main method and it is executed at the programme start up
+	 * 
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		
 		Scanner sc = new Scanner(System.in);
+		//Take the investment plan input from the user.
 		String investmentPlan = sc.next();
-		String urlToCall = URL + investmentPlan;
-		List<InvestmentHistoryPojo> investmentHist = getInvestmentHistory(urlToCall);
-		if(investmentHist != null){
-			
-			
-		}
 		
+		String urlToCall = URL + investmentPlan;
+		try {
+			InvestMentResponse investmentHist = getInvestmentHistory(urlToCall);
+			List<InvestmentReturn> returns = investmentHist.getReturns();
+			SimpleAverageFactory factory = new SimpleAverageFactory();
+			factory.setBiMonthlyInvestmentReturns(biMonthlyAverageCalculator);
+			factory.setTriMonthlyInvestmentReturns(triMonthlyAverageCalculator);
+			SimpleAverageGenerator averageGenertor = factory.getSimpleAverageGenerator(investmentPlan);
+			if(averageGenertor != null){
+				
+				List<Date> transDates = returns.stream().map(r->r.getTranDate()).collect(Collectors.toList());
+				System.out.println("Next Date : " + averageGenertor.getNextDate(transDates));
+			}
+			
+		} catch (InvestmentException e) {
+			System.out.println("Error occured with error code = "
+					+ e.getErrorCode() + " . Error Message = "
+					+ e.getErrorMessage());
+		}
 	}
-	
-	
-	public static List<InvestmentHistoryPojo> getInvestmentHistory(String url){
-		try{
+
+	/**
+	 * This method returns the InvestmentResponse object after parsing the JSON which we get from the URL.
+	 * @param url - url which will return JSON response.
+	 * @return - InvestMentResponse object
+	 * @throws InvestmentException
+	 */
+	public static InvestMentResponse getInvestmentHistory(String url)
+			throws InvestmentException {
+
+		try {
 			URL obj = new URL(url);
 			HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 			con.setRequestMethod("GET");
 			int responseCode = con.getResponseCode();
 			if (responseCode != HttpURLConnection.HTTP_OK) {
-			    System.out.println("Server returned response code " + responseCode + ". Request failed.");
-			    return null;
+				throw new InvestmentException(
+						InvestmentErrorCodes.STATUS_NOT_OK,
+						"URL returned with status not OK");
 			}
 			BufferedReader in = new BufferedReader(new InputStreamReader(
 					con.getInputStream()));
@@ -62,18 +98,207 @@ public class Predictor {
 				response.append(inputLine);
 			}
 			in.close();
-			List<InvestmentHistoryPojo> investHist = gson.fromJson(response.toString(), new TypeToken<List<InvestmentHistoryPojo>>(){}.getType());
-			return investHist;
-			
-		}catch(MalformedURLException mue){
-			System.out.println("Url is not valid.");
+			// This is the JSON deserializer for date
+			JsonDeserializer<Date> deser = new JsonDeserializer<Date>() {
+				@Override
+				public Date deserialize(JsonElement json, Type typeOfT,
+						JsonDeserializationContext context)
+						throws JsonParseException {
+
+					if (json == null) {
+						return null;
+					}
+					try {
+						// Get the date from the date string
+						String date = json.toString()
+								.substring(1, json.toString().length() - 1)
+								.trim();
+						String[] dateTime = date.split(" ");
+						String datePart = dateTime[0];
+						Date date1 = new SimpleDateFormat("dd-MM-yyyy")
+								.parse(datePart);
+						// if date contains the time then add the time
+						if (dateTime.length > 1) {
+							date1 = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
+									.parse(date);
+						}
+						return date1;
+					} catch (Exception e) {
+
+					}
+
+					return null;
+
+				}
+
+			};
+
+			Gson gson = new GsonBuilder()
+					.registerTypeAdapter(Date.class, deser).create();
+			InvestMentResponse investmentResp = gson.fromJson(
+					response.toString(), InvestMentResponse.class);
+			return investmentResp;
+
+		} catch (MalformedURLException mue) {
+			throw new InvestmentException(InvestmentErrorCodes.MALFORMED_URL,
+					"URL is not valid");
 		} catch (IOException e) {
-			System.out.println("Cannnot read input from the URL");
+			throw new InvestmentException(
+					InvestmentErrorCodes.I_O_ERROR,
+					"Input/Output exception. Something went wrong while reading the data from the url.");
+		} catch (JsonSyntaxException jsonSyntaxException) {
+			throw new InvestmentException(InvestmentErrorCodes.INVALID_JSON,
+					"Invalid JSON returned by the URL.");
+		} catch (Exception e) {
+			throw new InvestmentException(
+					InvestmentErrorCodes.UNKNOWN_EXCEPTION, "Unknown error");
 		}
-		return null;
-		
+
 	}
+
+}
+
+/**
+ * This represents the error codes 
+ * @author Rajesh
+ */
+class InvestmentErrorCodes {
+	public static final Integer MALFORMED_URL = 0;
+	public static final Integer I_O_ERROR = 1;
+	public static final Integer INVALID_JSON = 2;
+	public static final Integer STATUS_NOT_OK = 3;
+	public static final Integer UNKNOWN_EXCEPTION = 4;
+}
+
+/**
+ * This represents the investment JSON response returned by the URL
+ * @author Rajesh
+ */
+class InvestMentResponse {
+
+	private String name;
+	private String investmentType;
+	private Date investmentDate;
+	private List<InvestmentReturn> returns;
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getInvestmentType() {
+		return investmentType;
+	}
+
+	public void setInvestmentType(String investmentType) {
+		this.investmentType = investmentType;
+	}
+
+	public Date getInvestmentDate() {
+		return investmentDate;
+	}
+
+	public void setInvestmentDate(Date investmentDate) {
+		this.investmentDate = investmentDate;
+	}
+
+	public List<InvestmentReturn> getReturns() {
+		return returns;
+	}
+
+	public void setReturns(List<InvestmentReturn> returns) {
+		this.returns = returns;
+	}
+
+}
+
+/**
+ * This class represents the investment returns.
+ * @author Rajesh
+ *
+ */
+class InvestmentReturn {
+
+	// This represents the return date
+	private Date tranDate;
+	// This represents the return amount
+	private String tranAmount;
+
+	public Date getTranDate() {
+		return tranDate;
+	}
+
+	public void setTranDate(Date tranDate) {
+		this.tranDate = tranDate;
+	}
+
+	public String getTranAmount() {
+		return tranAmount;
+	}
+
+	public void setTranAmount(String tranAmount) {
+		this.tranAmount = tranAmount;
+	}
+
+}
+
+/**
+ * These represents the different investment plans.
+ * @author Rajesh
+ */
+enum InvestmentPlans {
+	LOWCAP, MIDCAP, HIGHCAP, SHORTTERM, MIDTERM, LONGTERM;
+}
+
+/**
+ * This class represents the exception occured in the system
+ * @author Rajesh
+ *
+ */
+class InvestmentException extends Exception {
 	
+	private int errorCode;
+	private String errorMessage;
+
+	public InvestmentException() {
+		super();
+	}
+
+	public InvestmentException(int errorCode, String errorMessage) {
+		super(errorMessage);
+		this.errorCode = errorCode;
+		this.errorMessage = errorMessage;
+	}
+
+	public int getErrorCode() {
+		return errorCode;
+	}
+
+	public void setErrorCode(int errorCode) {
+		this.errorCode = errorCode;
+	}
+
+	public String getErrorMessage() {
+		return errorMessage;
+	}
+
+	public void setErrorMessage(String errorMessage) {
+		this.errorMessage = errorMessage;
+	}
+
+}
+
+/**
+ * This represents the various 
+ * @author Rajesh
+ *
+ */
+interface SimpleAverageGenerator{
+	
+	public Date getNextDate(List<Date> tranDates);
 	
 }
 
@@ -82,78 +307,75 @@ public class Predictor {
  * @author Rajesh
  *
  */
-class InvestmentHistoryPojo{
+class BiMonthlyAverageGenerator implements SimpleAverageGenerator{
 	
-	//This represents the investment plan
-	private String investmentPlan;
-	//This represents the return date
-	private Date returnDate;
-	//This represents the return amount
-	private String returnAmount;
+	@Override
+	public Date getNextDate(List<Date> tranDates) {
+		//Get last two dates.
+		if(tranDates.size() > 3){
+			tranDates = new ArrayList<Date>(tranDates.subList(0, 1));
+		}
+		long time = tranDates.stream().mapToLong(d->d.getTime()).sum();
+		Date d = new Date(time);
+		return d;
+	}
 	
-	public String getInvestmentPlan() {
-		return investmentPlan;
+}
+class TriMonthlyAverageGenerator implements SimpleAverageGenerator{
+	
+	@Override
+	public Date getNextDate(List<Date> tranDates) {
+		//Get last two dates.
+		if(tranDates.size() > 3){
+			tranDates = new ArrayList<Date>(tranDates.subList(0, 2));
+		}
+		long time = tranDates.stream().mapToLong(d->d.getTime()).sum();
+		Date d = new Date(time);
+		return d;
 	}
-	public void setInvestmentPlan(String investmentPlan) {
-		this.investmentPlan = investmentPlan;
-	}
-	public Date getReturnDate() {
-		return returnDate;
-	}
-	public void setReturnDate(Date returnDate) {
-		this.returnDate = returnDate;
-	}
-	public String getReturnAmount() {
-		return returnAmount;
-	}
-	public void setReturnAmount(String returnAmount) {
-		this.returnAmount = returnAmount;
-	}	
 	
 }
 
 /**
- * These represents the different investment plans
+ * This is the SimpleAverageFactory and is used to get the specific Average calculator based on type of investment plan
  * @author Rajesh
  */
-enum InvestmentPlans{
-	LOWCAP, MIDCAP, HIGHCAP, SHORTTERM, MIDTERM, LONGTERM;
-}
-
-
-interface IReturnGenrator{
-     public Date getNextReturnDate(Date d);
-}
-
-class BiMonthlyReturnGenerator implements IReturnGenrator{
+class SimpleAverageFactory{
 	
-	private List<String> supportedReturnTypes;
-	public Date getNextReturnDate(Date d){
+	private List<String> biMonthlyInvestmentReturns;
+	
+	private List<String> triMonthlyInvestmentReturns;
+	
+	public SimpleAverageGenerator getSimpleAverageGenerator(String investmentType){
+		
+		SimpleAverageGenerator averageGenerator = null;
+		
+		if(biMonthlyInvestmentReturns.contains(investmentType)){
+			averageGenerator = new BiMonthlyAverageGenerator();
+		}else if(triMonthlyInvestmentReturns.contains(investmentType)){
+			averageGenerator = new TriMonthlyAverageGenerator();
+		}
+		return averageGenerator;
+		
+	}
 
-		// convert date to calendar
-		Calendar c = Calendar.getInstance();
-		c.setTime(d);
-		c.add(Calendar.DATE, 15); //same with c.add(Calendar.DAY_OF_MONTH, 1);
-		// convert calendar to date
-		Date nextDate = c.getTime();
-		return nextDate;
+	public List<String> getBiMonthlyInvestmentReturns() {
+		return biMonthlyInvestmentReturns;
+	}
+
+	public void setBiMonthlyInvestmentReturns(
+			List<String> biMonthlyInvestmentReturns) {
+		this.biMonthlyInvestmentReturns = biMonthlyInvestmentReturns;
+	}
+
+	public List<String> getTriMonthlyInvestmentReturns() {
+		return triMonthlyInvestmentReturns;
+	}
+
+	public void setTriMonthlyInvestmentReturns(
+			List<String> triMonthlyInvestmentReturns) {
+		this.triMonthlyInvestmentReturns = triMonthlyInvestmentReturns;
 	}
 	
-	
 }
 
-class TriMonthlyReturnGenerator implements IReturnGenrator{
-	
-	private List<String> supportedReturnTypes;
-	public Date getNextReturnDate(Date d){
-		// convert date to calendar
-		Calendar c = Calendar.getInstance();
-		c.setTime(d);
-		c.add(Calendar.DATE, 10); 
-		// convert calendar to date
-		Date nextDate = c.getTime();
-		return nextDate;
-	}
-	
-	
-}
